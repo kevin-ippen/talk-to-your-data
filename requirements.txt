@@ -1,0 +1,8 @@
+# Databricks Apps: only packages not pre-installed in the runtime.
+# Pre-installed: fastapi 0.115.0, uvicorn, httpx
+livekit-agents>=1.6.9
+livekit-plugins-openai>=1.0.0
+livekit-api>=1.0.0
+databricks-sdk>=0.40.0
+python-dotenv
+pyyaml>=6.0

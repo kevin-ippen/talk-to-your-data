@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Databricks Live Voice</title>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #ff3621;
+      --accent-glow: rgba(255, 54, 33, 0.3);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh; padding: 2rem;
+    }
+    .container { max-width: 480px; width: 100%; text-align: center; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 2rem; }
+
+    /* Orb visualizer */
+    .orb-container {
+      position: relative; width: 160px; height: 160px;
+      margin: 0 auto 2rem;
+    }
+    .orb {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: radial-gradient(circle at 40% 40%, #2d333b, #161b22);
+      border: 2px solid var(--border);
+      transition: all 0.3s ease;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .orb.listening {
+      border-color: var(--accent);
+      box-shadow: 0 0 30px var(--accent-glow), 0 0 60px var(--accent-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .orb.speaking {
+      border-color: #58a6ff;
+      box-shadow: 0 0 30px rgba(88, 166, 255, 0.3);
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .orb-label {
+      color: var(--muted); font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    /* Controls */
+    .controls { display: flex; gap: 1rem; justify-content: center; margin-bottom: 2rem; }
+    button {
+      padding: 0.75rem 1.5rem; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); font-size: 0.875rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    button:hover { border-color: var(--accent); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary {
+      background: var(--accent); border-color: var(--accent); color: white;
+    }
+    button.primary:hover { background: #e02e1b; }
+    button.danger { border-color: #f85149; color: #f85149; }
+    button.danger:hover { background: #f85149; color: white; }
+
+    /* Transcript */
+    .transcript {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1rem; text-align: left;
+      max-height: 300px; overflow-y: auto; min-height: 120px;
+    }
+    .transcript-empty { color: var(--muted); text-align: center; padding: 2rem 0; }
+    .turn { margin-bottom: 0.75rem; }
+    .turn-label {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+    .turn-label.user { color: var(--accent); }
+    .turn-label.agent { color: #58a6ff; }
+    .turn-text { font-size: 0.9rem; line-height: 1.4; }
+
+    /* Status bar */
+    .status {
+      margin-top: 1rem; font-size: 0.75rem; color: var(--muted);
+    }
+    .status .dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      margin-right: 4px; vertical-align: middle;
+    }
+    .dot.green { background: #3fb950; }
+    .dot.yellow { background: #d29922; }
+    .dot.red { background: #f85149; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Databricks Live Voice</h1>
+    <p class="subtitle">Talk to your data</p>
+
+    <div class="orb-container">
+      <div class="orb" id="orb">
+        <span class="orb-label" id="orbLabel">Ready</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="primary" id="connectBtn" onclick="toggleConnection()">
+        Connect
+      </button>
+      <button class="danger" id="muteBtn" onclick="toggleMute()" disabled>
+        Mute
+      </button>
+    </div>
+
+    <div class="transcript" id="transcript">
+      <div class="transcript-empty">Conversation will appear here</div>
+    </div>
+
+    <div class="status" id="status">
+      <span class="dot red"></span> Disconnected
+    </div>
+  </div>
+
+  <script>
+    const { Room, RoomEvent, Track, ConnectionState } = LivekitClient;
+
+    let room = null;
+    let connected = false;
+    let muted = false;
+    let transcriptData = [];
+
+    const orb = document.getElementById('orb');
+    const orbLabel = document.getElementById('orbLabel');
+    const connectBtn = document.getElementById('connectBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const transcriptEl = document.getElementById('transcript');
+    const statusEl = document.getElementById('status');
+
+    function setStatus(state, text) {
+      const colors = { green: 'green', yellow: 'yellow', red: 'red' };
+      statusEl.innerHTML = `<span class="dot ${colors[state] || 'red'}"></span> ${text}`;
+    }
+
+    function setOrb(state, label) {
+      orb.className = 'orb' + (state ? ` ${state}` : '');
+      orbLabel.textContent = label;
+    }
+
+    function addTranscript(role, text) {
+      transcriptData.push({ role, text });
+      renderTranscript();
+    }
+
+    function updateLastTranscript(role, text) {
+      const last = transcriptData[transcriptData.length - 1];
+      if (last && last.role === role) {
+        last.text = text;
+      } else {
+        transcriptData.push({ role, text });
+      }
+      renderTranscript();
+    }
+
+    function renderTranscript() {
+      if (transcriptData.length === 0) {
+        transcriptEl.innerHTML = '<div class="transcript-empty">Conversation will appear here</div>';
+        return;
+      }
+      transcriptEl.innerHTML = transcriptData.map(t =>
+        `<div class="turn">
+          <div class="turn-label ${t.role}">${t.role === 'user' ? 'You' : 'Assistant'}</div>
+          <div class="turn-text">${escapeHtml(t.text)}</div>
+        </div>`
+      ).join('');
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    async function toggleConnection() {
+      if (connected) {
+        await disconnect();
+      } else {
+        await connect();
+      }
+    }
+
+    async function connect() {
+      try {
+        connectBtn.disabled = true;
+        setStatus('yellow', 'Connecting...');
+        setOrb('', 'Connecting');
+
+        // Get token from our server
+        const resp = await fetch('/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || 'Token request failed');
+        }
+
+        const { token, room: roomName, livekit_url } = await resp.json();
+
+        if (!livekit_url) {
+          throw new Error('LIVEKIT_URL not configured on server');
+        }
+
+        // Connect to LiveKit room
+        room = new Room({
+          audioCaptureDefaults: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
+          adaptiveStream: true,
+          dynacast: true,
+        });
+
+        // Wire up events
+        room.on(RoomEvent.Connected, () => {
+          connected = true;
+          connectBtn.textContent = 'Disconnect';
+          connectBtn.className = 'danger';
+          connectBtn.disabled = false;
+          muteBtn.disabled = false;
+          setStatus('green', `Connected to ${roomName}`);
+          setOrb('listening', 'Listening');
+          transcriptData = [];
+          renderTranscript();
+        });
+
+        room.on(RoomEvent.Disconnected, () => {
+          handleDisconnect();
+        });
+
+        // Handle agent audio tracks
+        room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+          if (track.kind === Track.Kind.Audio) {
+            const el = track.attach();
+            document.body.appendChild(el);
+            setOrb('speaking', 'Speaking');
+          }
+        });
+
+        room.on(RoomEvent.TrackUnsubscribed, (track) => {
+          track.detach().forEach(el => el.remove());
+          if (connected) setOrb('listening', 'Listening');
+        });
+
+        // Handle transcription events (LiveKit agents emit these)
+        room.on(RoomEvent.TranscriptionReceived, (segments, participant) => {
+          for (const seg of segments) {
+            const role = participant?.isAgent ? 'agent' : 'user';
+            if (seg.final) {
+              updateLastTranscript(role, seg.text);
+            } else {
+              updateLastTranscript(role, seg.text + '...');
+            }
+          }
+        });
+
+        // Track active speakers for orb state
+        room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+          if (!connected) return;
+          const agentSpeaking = speakers.some(s => s.isAgent);
+          const userSpeaking = speakers.some(s => !s.isAgent);
+          if (agentSpeaking) {
+            setOrb('speaking', 'Speaking');
+          } else if (userSpeaking) {
+            setOrb('listening', 'Listening');
+          } else {
+            setOrb('listening', 'Listening');
+          }
+        });
+
+        // Data messages from agent (tool results, state updates)
+        room.on(RoomEvent.DataReceived, (payload, participant) => {
+          if (participant?.isAgent) {
+            try {
+              const msg = JSON.parse(new TextDecoder().decode(payload));
+              console.log('Agent data:', msg);
+            } catch { /* non-JSON data */ }
+          }
+        });
+
+        // Connect and publish microphone
+        await room.connect(livekit_url, token);
+        await room.localParticipant.setMicrophoneEnabled(true);
+
+      } catch (err) {
+        console.error('Connection failed:', err);
+        setStatus('red', `Error: ${err.message}`);
+        setOrb('', 'Error');
+        connectBtn.textContent = 'Connect';
+        connectBtn.className = 'primary';
+        connectBtn.disabled = false;
+      }
+    }
+
+    async function disconnect() {
+      if (room) {
+        await room.disconnect();
+      }
+      handleDisconnect();
+    }
+
+    function handleDisconnect() {
+      connected = false;
+      connectBtn.textContent = 'Connect';
+      connectBtn.className = 'primary';
+      connectBtn.disabled = false;
+      muteBtn.disabled = true;
+      setStatus('red', 'Disconnected');
+      setOrb('', 'Ready');
+    }
+
+    async function toggleMute() {
+      if (!room || !connected) return;
+      muted = !muted;
+      await room.localParticipant.setMicrophoneEnabled(!muted);
+      muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+      if (muted) setOrb('', 'Muted');
+      else setOrb('listening', 'Listening');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Databricks App configuration for Live Voice Kit
+# Deploy: databricks apps deploy <app-name>
+command:
+  - python
+  - -m
+  - src.main
+
+env:
+  - name: GENIE_SPACE_ID
+    description: Genie space ID to query for data analytics
+  - name: LIVEKIT_URL
+    description: LiveKit server WebSocket URL
+  - name: LIVEKIT_API_KEY
+    description: LiveKit API key
+  - name: LIVEKIT_API_SECRET
+    description: LiveKit API secret
+  - name: VOICE_PROFILE
+    description: Voice quality profile (premium/balanced/private/hybrid)
+    value: premium
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+
+resources:
+  - name: sql-warehouse
+    sql_warehouse:
+      permission: CAN_USE
