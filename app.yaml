@@ -7,13 +7,16 @@ command:
 
 env:
   - name: GENIE_SPACE_ID
-    description: Genie space ID to query for data analytics
+    value: "01f1a88ca4a011bb9e7a3a8d4e79fd03"
+  - name: GENIE_MODE
+    description: "Genie runtime mode: agent (SSE streaming), chat (polling), or mcp (Genie One workspace-wide)"
+    value: "agent"
   - name: LIVEKIT_URL
-    description: LiveKit server WebSocket URL
+    value: "wss://talk-to-your-data-w51pqf4d.livekit.cloud"
   - name: LIVEKIT_API_KEY
-    description: LiveKit API key
+    value: "APIJmBwQZoymeZm"
   - name: LIVEKIT_API_SECRET
-    description: LiveKit API secret
+    value: "AfDyU9eT8kwacwBCvrMxPAgNe2mfg5fX4j6dngMev3gC"
   - name: VOICE_PROFILE
     description: Voice quality profile (premium/balanced/private/hybrid)
     value: premium

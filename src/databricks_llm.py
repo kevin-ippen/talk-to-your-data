@@ -17,12 +17,14 @@ def create_databricks_llm(
     config: DatabricksConfig | None = None,
     temperature: float = 0.7,
     max_completion_tokens: int = 1024,
-    parallel_tool_calls: bool = False,
 ) -> llm.LLM:
     """Create an LLM backed by Databricks FMAPI.
 
     Uses the OpenAI plugin with Databricks serving endpoint as base_url.
     No custom plugin needed — FMAPI is OpenAI-compatible.
+
+    NOTE: Do NOT pass parallel_tool_calls — FMAPI rejects it as an
+    unsupported extra input (400 Bad Request).
     """
     if config is None:
         config = DatabricksConfig.resolve()
@@ -33,5 +35,4 @@ def create_databricks_llm(
         api_key=config.token,
         temperature=temperature,
         max_completion_tokens=max_completion_tokens,
-        parallel_tool_calls=parallel_tool_calls,
     )

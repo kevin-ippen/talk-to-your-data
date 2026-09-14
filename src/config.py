@@ -25,39 +25,71 @@ class DatabricksConfig:
         """Auto-resolve from Databricks App context or env vars.
 
         Priority:
-        1. Explicit env vars (DATABRICKS_HOST, DATABRICKS_TOKEN)
-        2. WorkspaceClient auto-config (Databricks Apps, notebooks)
+        1. Explicit env vars (DATABRICKS_HOST + DATABRICKS_TOKEN)
+        2. WorkspaceClient auto-config (M2M OAuth in Apps, implicit in notebooks)
+
+        In Databricks Apps, DATABRICKS_HOST is always set but DATABRICKS_TOKEN
+        is not (the App uses M2M OAuth via client_id/client_secret).  LiveKit
+        spawns child processes that inherit env vars, but the parent's
+        os.environ mutations may not propagate reliably.  So we ALWAYS fall
+        back to WorkspaceClient when the token is missing.
         """
+        import logging
+        log = logging.getLogger("databricks-voice.config")
+
         host = os.environ.get("DATABRICKS_HOST", "")
         token = os.environ.get("DATABRICKS_TOKEN", "")
 
-        if not host:
+        log.info(
+            f"resolve(): DATABRICKS_HOST={'set' if host else 'missing'}, "
+            f"DATABRICKS_TOKEN={'set' if token else 'missing'}"
+        )
+
+        # If we already have both, we're done.
+        if host and token:
+            return cls(
+                host=host.rstrip("/"),
+                token=token,
+                serving_base_url=f"{host.rstrip('/')}/serving-endpoints",
+            )
+
+        # Otherwise, use WorkspaceClient to resolve what's missing.
+        # In Databricks Apps this uses M2M OAuth (DATABRICKS_CLIENT_ID +
+        # DATABRICKS_CLIENT_SECRET are auto-injected).
+        try:
             w = WorkspaceClient()
-            host = w.config.host.rstrip("/")
-            # In Databricks Apps, token is available; in notebooks it may be
-            # None (implicit auth). Fall back to generating a token.
-            token = token or w.config.token or ""
+            host = host or w.config.host.rstrip("/")
+
             if not token:
-                try:
-                    # Generate a PAT-style token for API calls within the
-                    # workspace (works in notebook context)
-                    from databricks.sdk.service.iam import CreateTokenRequest
-                    tok = w.tokens.create(
-                        comment="databricks-live-voice-ephemeral",
-                        lifetime_seconds=3600,
-                    )
-                    token = tok.token_value
-                except Exception:
-                    # Last resort: use the SDK's built-in auth header
-                    auth_headers = w.config.authenticate()
-                    if callable(auth_headers):
-                        auth_headers = auth_headers()
-                    token = auth_headers.get("Authorization", "").replace("Bearer ", "")
+                # Try SDK's built-in token first (PAT-based auth)
+                token = w.config.token or ""
+
+            if not token:
+                # M2M OAuth path: extract bearer token from auth headers
+                auth_headers = w.config.authenticate()
+                if callable(auth_headers):
+                    auth_headers = auth_headers()
+                token = auth_headers.get("Authorization", "").replace("Bearer ", "")
+                log.info(f"resolve(): got token via authenticate() ({len(token)} chars)")
+
+        except Exception as e:
+            log.error(f"resolve(): WorkspaceClient failed: {e}")
+
+        if not token:
+            log.error("resolve(): NO TOKEN RESOLVED — LLM calls will fail!")
+
+        # Ensure host always has https:// prefix (Databricks Apps may
+        # set DATABRICKS_HOST without it).
+        host = host.rstrip("/")
+        if host and not host.startswith("http"):
+            host = f"https://{host}"
+
+        log.info(f"resolve(): final host={host}, token={'set' if token else 'MISSING'}")
 
         return cls(
-            host=host.rstrip("/"),
+            host=host,
             token=token,
-            serving_base_url=f"{host.rstrip('/')}/serving-endpoints",
+            serving_base_url=f"{host}/serving-endpoints",
         )
 
 

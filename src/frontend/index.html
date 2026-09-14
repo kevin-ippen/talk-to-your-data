@@ -39,7 +39,17 @@
       box-shadow: 0 0 30px var(--accent-glow), 0 0 60px var(--accent-glow);
       animation: pulse 2s ease-in-out infinite;
     }
-    .orb.speaking {
+    .orb.understanding {
+      border-color: #d29922;
+      box-shadow: 0 0 20px rgba(210, 153, 34, 0.3);
+      animation: think 2s ease-in-out infinite;
+    }
+    .orb.working {
+      border-color: #d29922;
+      box-shadow: 0 0 25px rgba(210, 153, 34, 0.35), 0 0 50px rgba(210, 153, 34, 0.15);
+      animation: work 1.5s ease-in-out infinite;
+    }
+    .orb.responding {
       border-color: #58a6ff;
       box-shadow: 0 0 30px rgba(88, 166, 255, 0.3);
       animation: pulse 1s ease-in-out infinite;
@@ -48,10 +58,31 @@
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.05); }
     }
+    @keyframes think {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.02); opacity: 0.8; }
+    }
+    @keyframes work {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.04); opacity: 0.75; }
+    }
     .orb-label {
       color: var(--muted); font-size: 0.75rem; text-transform: uppercase;
       letter-spacing: 0.1em;
     }
+
+    /* Mode selector */
+    .mode-bar {
+      display: flex; justify-content: center; gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .mode-bar select {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 0.4rem 0.75rem;
+      font-size: 0.75rem; cursor: pointer;
+    }
+    .mode-bar select:hover { border-color: var(--accent); }
+    .mode-label { color: var(--muted); font-size: 0.7rem; align-self: center; }
 
     /* Controls */
     .controls { display: flex; gap: 1rem; justify-content: center; margin-bottom: 2rem; }
@@ -107,6 +138,15 @@
       <div class="orb" id="orb">
         <span class="orb-label" id="orbLabel">Ready</span>
       </div>
+    </div>
+
+    <div class="mode-bar">
+      <span class="mode-label">Mode</span>
+      <select id="modeSelect">
+        <option value="agent">Agent (SSE)</option>
+        <option value="chat">Chat (Polling)</option>
+        <option value="mcp">Genie One (MCP)</option>
+      </select>
     </div>
 
     <div class="controls">
@@ -269,26 +309,50 @@
           }
         });
 
-        // Track active speakers for orb state
+        // 4-state orb: Listening -> Understanding -> Working (sub-label) -> Responding
+        // Agent sends explicit state via data channel; audio activity handles Listening/Responding
+        let agentState = null;  // last state from data channel
+        let thinkingTimer = null;
+        let userWasSpeaking = false;
+
         room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
           if (!connected) return;
           const agentSpeaking = speakers.some(s => s.isAgent);
           const userSpeaking = speakers.some(s => !s.isAgent);
+
+          if (thinkingTimer) { clearTimeout(thinkingTimer); thinkingTimer = null; }
+
           if (agentSpeaking) {
-            setOrb('speaking', 'Speaking');
+            setOrb('responding', 'Responding');
+            agentState = null;  // audio overrides data channel
+            userWasSpeaking = false;
           } else if (userSpeaking) {
             setOrb('listening', 'Listening');
-          } else {
-            setOrb('listening', 'Listening');
+            agentState = null;
+            userWasSpeaking = true;
+          } else if (agentState) {
+            // Agent sent an explicit state — use it
+            setOrb(agentState.state, agentState.label);
+          } else if (userWasSpeaking) {
+            // User stopped, agent hasn't signaled yet — show Understanding
+            thinkingTimer = setTimeout(() => {
+              if (connected && !muted && !agentState) {
+                setOrb('understanding', 'Understanding');
+              }
+            }, 1200);
           }
         });
 
-        // Data messages from agent (tool results, state updates)
+        // Data messages from agent — orb state updates
         room.on(RoomEvent.DataReceived, (payload, participant) => {
           if (participant?.isAgent) {
             try {
               const msg = JSON.parse(new TextDecoder().decode(payload));
-              console.log('Agent data:', msg);
+              if (msg.type === 'agent_state') {
+                agentState = { state: msg.state, label: msg.label };
+                setOrb(msg.state, msg.label);
+                console.log(`Orb: ${msg.state}/${msg.label}`);
+              }
             } catch { /* non-JSON data */ }
           }
         });
