@@ -1,15 +1,9 @@
 # Databricks App configuration for Live Voice Kit
 # Deploy: databricks apps deploy <app-name>
 #
-# SECRETS: LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be stored in a
-# Databricks secret scope, then referenced here. NEVER commit plaintext
-# credentials to source control.
-#
-# Setup:
-#   databricks secrets create-scope live-voice
-#   databricks secrets put-secret live-voice livekit-api-key
-#   databricks secrets put-secret live-voice livekit-api-secret
-#   databricks secrets put-secret live-voice livekit-url
+# LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET are NOT in this file.
+# Set them through the Databricks Apps UI (Environment Variables tab).
+# They persist across redeployments and are never stored in source control.
 command:
   - python
   - -m
@@ -21,21 +15,6 @@ env:
   - name: GENIE_MODE
     description: "Genie runtime mode: agent (SSE streaming), chat (polling), or mcp (Genie One workspace-wide)"
     value: "agent"
-  - name: LIVEKIT_URL
-    valueFrom:
-      secret:
-        scope: live-voice
-        key: livekit-url
-  - name: LIVEKIT_API_KEY
-    valueFrom:
-      secret:
-        scope: live-voice
-        key: livekit-api-key
-  - name: LIVEKIT_API_SECRET
-    valueFrom:
-      secret:
-        scope: live-voice
-        key: livekit-api-secret
   - name: VOICE_PROFILE
     description: Voice quality profile (premium/balanced/private/hybrid)
     value: premium
