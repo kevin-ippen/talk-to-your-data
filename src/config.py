@@ -93,6 +93,41 @@ class DatabricksConfig:
         )
 
 
+
+
+# ---------------------------------------------------------------------------
+# LiveKit credentials
+# ---------------------------------------------------------------------------
+
+def resolve_livekit_credentials(scope: str = "live-voice") -> tuple[str, str, str]:
+    """Resolve (url, api_key, api_secret) for LiveKit.
+
+    Priority:
+      1. LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET env vars
+      2. Databricks secret scope (default: `live-voice`) via the app's
+         WorkspaceClient — zero-config on Databricks Apps; the app's
+         service principal needs `secrets:read` on the scope.
+    """
+    import logging
+    log = logging.getLogger("databricks-voice.config")
+
+    url = os.environ.get("LIVEKIT_URL", "")
+    key = os.environ.get("LIVEKIT_API_KEY", "")
+    secret = os.environ.get("LIVEKIT_API_SECRET", "")
+    if url and key and secret:
+        return url, key, secret
+
+    try:
+        w = WorkspaceClient()
+        url = url or w.dbutils.secrets.get(scope, "livekit-url")
+        key = key or w.dbutils.secrets.get(scope, "livekit-api-key")
+        secret = secret or w.dbutils.secrets.get(scope, "livekit-api-secret")
+        log.info(f"resolve_livekit_credentials(): loaded from scope '{scope}'")
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"resolve_livekit_credentials(): scope '{scope}' unavailable: {e}")
+    return url, key, secret
+
+
 VoiceProfile = Literal["premium", "balanced", "private", "hybrid"]
 
 

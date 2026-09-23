@@ -62,9 +62,15 @@ def main() -> None:
     """Run both services: token server in thread, agent worker on main thread."""
     port = int(os.environ.get("DATABRICKS_APP_PORT", os.environ.get("PORT", "8000")))
 
-    livekit_url = os.environ.get("LIVEKIT_URL", "")
-    api_key = os.environ.get("LIVEKIT_API_KEY", "")
-    api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+    # Resolve LiveKit creds (env first, then the `live-voice` secret scope)
+    from src.config import resolve_livekit_credentials
+
+    livekit_url, api_key, api_secret = resolve_livekit_credentials()
+    # Seed env for the LiveKit Agents framework + token server, which read
+    # LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET from the environment.
+    os.environ.setdefault("LIVEKIT_URL", livekit_url)
+    os.environ.setdefault("LIVEKIT_API_KEY", api_key)
+    os.environ.setdefault("LIVEKIT_API_SECRET", api_secret)
 
     logger.info("=" * 60)
     logger.info("Databricks Live Voice Kit")

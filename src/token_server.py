@@ -78,9 +78,9 @@ async def create_token(req: TokenRequest):
     The token grants permission to join the specified room, publish
     audio, and subscribe to the agent's audio and data streams.
     """
-    api_key = os.environ.get("LIVEKIT_API_KEY")
-    api_secret = os.environ.get("LIVEKIT_API_SECRET")
-    livekit_url = os.environ.get("LIVEKIT_URL", "")
+    from src.config import resolve_livekit_credentials
+
+    livekit_url, api_key, api_secret = resolve_livekit_credentials()
 
     if not api_key or not api_secret:
         raise HTTPException(
