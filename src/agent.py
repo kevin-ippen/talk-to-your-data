@@ -110,6 +110,7 @@ class DatabricksVoiceAgent(Agent):
         *,
         dbx_config: DatabricksConfig,
         voice_config: VoiceConfig,
+        user_context: str = "",
     ) -> None:
         tools = []
 
@@ -126,8 +127,18 @@ class DatabricksVoiceAgent(Agent):
             )
             tools.extend(genie_tools)
 
+        instructions = SYSTEM_INSTRUCTIONS
+        if user_context:
+            instructions += (
+                "\n\nCURRENT USER CONTEXT (from the user's Aladdin session — "
+                "the analysis they are looking at right now; ground answers in "
+                "it when relevant, and acknowledge it naturally if they ask "
+                "about 'this' or 'what I'm seeing'):\n" + user_context
+            )
+            logger.info(f"Agent session carries user context ({len(user_context)} chars)")
+
         super().__init__(
-            instructions=SYSTEM_INSTRUCTIONS,
+            instructions=instructions,
             tools=tools,
         )
 
@@ -202,16 +213,26 @@ async def voice_session(ctx: JobContext):
         expressive=voice_config.expressive,
     )
 
+    await ctx.connect()
+
+    # Read the joining participant's metadata (carries the caller's current
+    # context, e.g. the Aladdin card they're looking at).
+    user_context = ""
+    try:
+        participant = await ctx.wait_for_participant()
+        user_context = (participant.metadata or "")[:1500]
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"wait_for_participant/metadata failed (starting context-free): {e}")
+
     # Start the session
     await session.start(
         agent=DatabricksVoiceAgent(
             dbx_config=dbx_config,
             voice_config=voice_config,
+            user_context=user_context,
         ),
         room=ctx.room,
     )
-
-    await ctx.connect()
 
 
 if __name__ == "__main__":

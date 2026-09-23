@@ -14,7 +14,7 @@ env:
     value: "01f1a88ca4a011bb9e7a3a8d4e79fd03"
   - name: GENIE_MODE
     description: "Genie runtime mode: agent (SSE streaming), chat (polling), or mcp (Genie One workspace-wide)"
-    value: "agent"
+    value: "mcp"
   - name: VOICE_PROFILE
     description: Voice quality profile (premium/balanced/private/hybrid)
     value: premium

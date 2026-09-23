@@ -47,6 +47,9 @@ class TokenRequest(BaseModel):
     room: str = ""
     # Display name for the participant
     identity: str = ""
+    # Optional caller context (e.g. the user's current analysis) — carried
+    # into the room as participant metadata so the agent starts informed.
+    context: str = ""
 
 
 class TokenResponse(BaseModel):
@@ -92,21 +95,21 @@ async def create_token(req: TokenRequest):
     identity = req.identity or f"user-{uuid.uuid4().hex[:6]}"
 
     # Mint a JWT with room join + audio publish grants
-    token = (
-        AccessToken(api_key, api_secret)
-        .with_identity(identity)
-        .with_name(identity)
-        .with_grants(
-            VideoGrants(
-                room_join=True,
-                room=room,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True,
-            )
+    token = AccessToken(api_key, api_secret).with_identity(identity).with_name(identity)
+
+    # Caller context → participant metadata (JWT-bounded, keep small)
+    if req.context:
+        token = token.with_metadata(req.context[:1500])
+
+    token = token.with_grants(
+        VideoGrants(
+            room_join=True,
+            room=room,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
         )
-        .with_ttl(datetime.timedelta(hours=1))
-    )
+    ).with_ttl(datetime.timedelta(hours=1))
 
     jwt = token.to_jwt()
 
