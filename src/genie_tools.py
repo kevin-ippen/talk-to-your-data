@@ -133,6 +133,17 @@ NARRATION = {
         "Hang on, just about done.",
         "Working through the last chunk of data.",
         "A little more time on this one.",
+        "Going to need some deeper analysis on this one, give me a minute.",
+        "This needs a deeper pass — hang on for a bit.",
+        "Taking a bit longer than usual, the analysis is worth the wait.",
+        "Digging a level deeper on this one, be right with you.",
+    ],
+    "deep": [
+        "Going to need some deeper analysis on this one, give me a minute.",
+        "This is turning into a real analysis project — give me a bit.",
+        "Still deep in the data on this one. It's a meaty question.",
+        "Taking the scenic route through the dataset, this one's layered.",
+        "Deep dive in progress — this question has some depth to it.",
     ],
     "routing": [
         "Let me figure out the best data source for this.",
@@ -153,11 +164,12 @@ NARRATION_TO_STATE = {
     "querying":  ("working",       "Querying"),
     "results":   ("working",       "Calculating"),
     "waiting":   ("working",       "Working"),
+    "deep":      ("working",       "Deep analysis"),
     "routing":   ("working",       "Searching"),
 }
 
-_MIN_FILLER_GAP = 8.0   # seconds between generic filler phrases
-_MIN_CONTENT_GAP = 3.0  # seconds between real reasoning content
+_MIN_FILLER_GAP = 16.0  # seconds between generic filler phrases
+_MIN_CONTENT_GAP = 8.0  # seconds between real reasoning content
 
 
 def _pick(category: str, state: dict) -> str:
@@ -552,8 +564,9 @@ async def _chat_mode_poll(
         if status == "CANCELLED":
             return GenieResult(question=question, answer="Query was cancelled.", status="failed"), conv_id
 
+        wait_cat = "deep" if elapsed > 45 else "waiting"
         if time.monotonic() - say_state.get("last_say", 0) > 10.0:
-            _say(ctx, _pick("waiting", say_state), say_state, "waiting")
+            _say(ctx, _pick(wait_cat, say_state), say_state, wait_cat)
 
     return GenieResult(question=question, answer="Timed out. Try a more specific question?", status="timeout"), conv_id
 
