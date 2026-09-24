@@ -586,7 +586,7 @@ async def _mcp_mode(
     conversation_id: str | None = None,
     timeout_seconds: float = 90.0,
 ) -> tuple[GenieResult, str | None]:
-    mcp_url = f"{host}/api/2.0/mcp/genie"
+    mcp_url = f"{host}/ai-gateway/mcp-services/system.ai.genie_one_mcp"
     say_state: dict = {"last_say": 0}
 
     ask_args: dict = {"question": question}
